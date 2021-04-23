@@ -4,12 +4,13 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"sync"
 	"path/filepath"
-	
+	// "time"
 	"encoding/json"
 	
+	
 	"rogchap.com/v8go"
-	// "time"
 
 	// "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,6 +46,8 @@ func main() {
 	fmt.Printf("%T\n", pods)
 	
 	length := len(pods.Items)
+
+	var wg sync.WaitGroup
 	
 	for i:=0; i<length; i++ {
 		if err != nil {
@@ -53,18 +56,23 @@ func main() {
 
 		name:=pods.Items[i].ObjectMeta.Name
 		data, _ := json.Marshal(pods.Items[i])
-		result:= execute(string(data))
-		fmt.Printf("%s : %s\n",name, result)
+		// result:= execute(string(data))
+		wg.Add(1)
+		go execute(string(data), name, &wg)
+		// fmt.Printf("%s : %s\n",name, result)
 	}
+
+	wg.Wait()
 }
 
-func execute(pod string) *v8go.Value{
+func execute(pod string, name string, wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	ctx, _ := v8go.NewContext() // creates a new V8 context with a new Isolate aka VM
 	ctx.RunScript("const log = (a) => Object.keys(a)", "log.js") // executes a script on the global context
 	var scr string ="const result = log("+pod+")"
 	ctx.RunScript(scr, "main.js") // any functions previously added to the context can be called
 	val, _ := ctx.RunScript("result", "value.js") // return a value in JavaScript back to Go
-
-	return val
+	fmt.Printf("%s : %s\n",name, val)
 }
 
