@@ -20,7 +20,7 @@ import (
 	"k8s.io/client-go/util/homedir"
 )
 
-func main() {
+func configure() *kubernetes.Clientset {
 	var kubeconfig *string
 	if home := homedir.HomeDir(); home != "" {
 		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
@@ -29,18 +29,34 @@ func main() {
 	}
 	flag.Parse()
 
-	// use the current context in kubeconfig
 	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
 	if err != nil {
 		panic(err.Error())
 	}
 
-	// create the clientset
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(err.Error())
 	}
+	return clientset
+}
+
+func execute(pod string, name string, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	dat, _ := ioutil.ReadFile("log.js")
+	ctx, _ := v8go.NewContext() 
 	
+	ctx.RunScript(string(dat), "log.js") 
+	var scr string ="const result = log("+pod+")"
+	ctx.RunScript(scr, "main.js") 
+	val, _ := ctx.RunScript("result", "value.js") 
+	
+	fmt.Printf("%s : %s\n",name, val)
+}
+
+func main() {
+	clientset := configure()
 	pods, err := clientset.CoreV1().Pods("kube-system").List(context.TODO(), metav1.ListOptions{})
 
 	fmt.Printf("%d\n",len(pods.Items))
@@ -57,23 +73,10 @@ func main() {
 
 		name:=pods.Items[i].ObjectMeta.Name
 		data, _ := json.Marshal(pods.Items[i])
-		// result:= execute(string(data))
+
 		wg.Add(1)
 		go execute(string(data), name, &wg)
-		// fmt.Printf("%s : %s\n",name, result)
 	}
 
 	wg.Wait()
 }
-
-func execute(pod string, name string, wg *sync.WaitGroup) {
-	defer wg.Done()
-	dat, _ := ioutil.ReadFile("log.js")
-	ctx, _ := v8go.NewContext() 
-	ctx.RunScript(string(dat), "log.js") // executes a script on the global context
-	var scr string ="const result = log("+pod+")"
-	ctx.RunScript(scr, "main.js") // any functions previously added to the context can be called
-	val, _ := ctx.RunScript("result", "value.js") // return a value in JavaScript back to Go
-	fmt.Printf("%s : %s\n",name, val)
-}
-
