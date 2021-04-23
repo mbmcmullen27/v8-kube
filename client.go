@@ -7,6 +7,7 @@ import (
 	"sync"
 	"path/filepath"
 	// "time"
+	"io/ioutil"
 	"encoding/json"
 	
 	
@@ -67,9 +68,9 @@ func main() {
 
 func execute(pod string, name string, wg *sync.WaitGroup) {
 	defer wg.Done()
-
-	ctx, _ := v8go.NewContext() // creates a new V8 context with a new Isolate aka VM
-	ctx.RunScript("const log = (a) => Object.keys(a)", "log.js") // executes a script on the global context
+	dat, _ := ioutil.ReadFile("log.js")
+	ctx, _ := v8go.NewContext() 
+	ctx.RunScript(string(dat), "log.js") // executes a script on the global context
 	var scr string ="const result = log("+pod+")"
 	ctx.RunScript(scr, "main.js") // any functions previously added to the context can be called
 	val, _ := ctx.RunScript("result", "value.js") // return a value in JavaScript back to Go
