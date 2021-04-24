@@ -1,1 +1,0 @@
-const log = (a) => Object.keys(a)

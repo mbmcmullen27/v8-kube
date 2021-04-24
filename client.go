@@ -44,11 +44,11 @@ func configure() *kubernetes.Clientset {
 func execute(pod string, name string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
-	dat, _ := ioutil.ReadFile("log.js")
+	dat, _ := ioutil.ReadFile("util.js")
 	ctx, _ := v8go.NewContext() 
 	
-	ctx.RunScript(string(dat), "log.js") 
-	var scr string ="const result = log("+pod+")"
+	ctx.RunScript(string(dat), "util.js") 
+	var scr string ="const result = parse("+pod+")"
 	ctx.RunScript(scr, "main.js") 
 	val, _ := ctx.RunScript("result", "value.js") 
 	
