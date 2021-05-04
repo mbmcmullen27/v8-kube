@@ -41,28 +41,49 @@ func configure() *kubernetes.Clientset {
 	return clientset
 }
 
-func execute(pod string, name string, wg *sync.WaitGroup) {
+func execute(pod string, wg *sync.WaitGroup, file *os.File) {
 	defer wg.Done()
 
-	dat, _ := ioutil.ReadFile("util.js")
-	ctx, _ := v8go.NewContext() 
+	//currently runs 1 isolate per pod
+	iso, _ := v8go.NewIsolate()
+
+	//callback to write a byteslice to the opened flie
+	filewrite, _ := v8go.NewFunctionTemplate(iso, func(info *v8go.FunctionCallbackInfo) *v8go.Value {
+		fmt.Printf("%v", info.Args()[0])
+		data := []byte(info.Args()[0].String())
+		numb, err := file.Write(data)
+		check(err)
+		fmt.Printf("wrote %d bytes\n", numb)
+
+		file.Sync()
+
+		return nil
+	})
+
+	global, _ := v8go.NewObjectTemplate(iso)
+	global.Set("print", filewrite)
+
+	util, _ := ioutil.ReadFile("util.js")
+	ctx, _ := v8go.NewContext(iso, global) 
 	
-	ctx.RunScript(string(dat), "util.js") 
+	ctx.RunScript(string(util), "util.js") 
 	var scr string ="const result = parse("+pod+")"
 	ctx.RunScript(scr, "main.js") 
-	val, _ := ctx.RunScript("result", "value.js") 
-	
-	fmt.Printf("%s : %s\n",name, val)
+	ctx.RunScript("result", "value.js") 
+
 }
 
 func main() {
 	clientset := configure()
 	pods, err := clientset.CoreV1().Pods("kube-system").List(context.TODO(), metav1.ListOptions{})
 
-	fmt.Printf("%d\n",len(pods.Items))
-	fmt.Printf("%T\n", pods)
-	
 	length := len(pods.Items)
+	fmt.Printf("Found %d pods\n",length)
+
+	//open an output data file 
+	file, err := os.Create("/tmp/kubdat") 
+    check(err)
+	defer file.Close()
 
 	var wg sync.WaitGroup
 	
@@ -75,7 +96,7 @@ func main() {
 		data, _ := json.Marshal(pods.Items[i])
 
 		wg.Add(1)
-		go execute(string(data), name, &wg)
+		go execute(string(data), name, &wg, file)
 	}
 
 	wg.Wait()
